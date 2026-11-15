@@ -1,0 +1,19 @@
+id: PB-PRIV-ESC
+title: Unauthorised privileged grant
+triggers: [LD-001, LD-005, BS-020]
+sop: IR-2.3
+severity: 2
+steps:
+  - id: remove_binding
+    title: Remove the unapproved role binding
+    mode: approve         # affects a human's access → IR-3.1 requires approval
+    action: remove_binding
+  - id: suspend_identity
+    title: Suspend the granting identity pending interview
+    mode: approve
+    action: suspend_user
+  - id: diff_changes
+    title: Diff all resource changes made under the elevated role
+    mode: recommend
+    action: none
+    guidance: Pull SetIamPolicy, export and update events for the principal in the elevation window.

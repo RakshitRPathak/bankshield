@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BankShield console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+  <aside class="rail">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.3 8 11 4.6-1.700 8-6 8-11V5z"/><path class="tick" d="m8.500 12 2.500 2.500 4.500-5"/></svg><span>BankShield</span></div>
+    <nav id="nav" aria-label="Sections">
+      <button data-tab="overview" class="active">Overview</button>
+      <button data-tab="ask">Ask</button>
+      <button data-tab="paths">Attack paths <b id="n_paths"></b></button>
+      <button data-tab="findings">Findings <b id="n_findings"></b></button>
+      <button data-tab="alerts">Alerts and cases <b id="n_alerts"></b></button>
+      <button data-tab="incidents">Incidents <b id="n_inc"></b></button>
+      <button data-tab="compliance">Compliance</button>
+      <button data-tab="attack">ATT&amp;CK coverage</button>
+      <button data-tab="audit">Audit trail</button>
+    </nav>
+    <p class="rail-note">Simulated GCP estate. Every question, scan and action on this console is written to the audit trail.</p>
+  </aside>
+  <div class="work">
+    <header class="top">
+      <h1 id="title">Overview</h1>
+      <div class="who">
+        <label for="user">Signed in as</label>
+        <select id="user"></select>
+        <span id="roleinfo" class="muted"></span>
+        <button id="scanBtn" data-action="scan">Re-scan estate</button>
+      </div>
+    </header>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <main id="main" tabindex="-1">
+      <section class="tab active" id="tab-overview"></section>
+      <section class="tab" id="tab-ask">
+        <form id="askForm" class="askbar">
+          <label for="q" class="sr">Question</label>
+          <input id="q" maxlength="600" autocomplete="off" placeholder="Which resources violate data residency right now?">
+          <button class="primary" type="submit">Ask</button>
+        </form>
+        <div class="chips" id="samples"></div>
+        <div id="thread"></div>
+      </section>
+      <section class="tab" id="tab-paths"></section>
+      <section class="tab" id="tab-findings"></section>
+      <section class="tab" id="tab-alerts"></section>
+      <section class="tab" id="tab-incidents"></section>
+      <section class="tab" id="tab-compliance"></section>
+      <section class="tab" id="tab-attack"></section>
+      <section class="tab" id="tab-audit"></section>
+    </main>
+  </div>
+</div>
+<aside id="drawer" class="drawer" aria-label="Details" hidden></aside>
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<div id="tip" class="tip" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

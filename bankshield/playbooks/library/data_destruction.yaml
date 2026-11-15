@@ -1,0 +1,19 @@
+id: PB-DATA-DESTRUCTION
+title: Mass deletion of restricted data
+triggers: [LD-009]
+sop: CSP-7.2
+severity: 1
+steps:
+  - id: suspend_identity
+    title: Suspend the deleting identity
+    mode: approve
+    action: suspend_user
+  - id: restore_versioning
+    title: Re-enable object versioning on the affected bucket
+    mode: approve
+    action: enable_versioning
+  - id: restore_data
+    title: Restore objects from versions or backup and verify against the recovery objectives
+    mode: recommend
+    action: none
+    guidance: Tier-1 systems must meet an RPO of 15 minutes and an RTO of 2 hours (CSP-7.1). Record the measured recovery time.

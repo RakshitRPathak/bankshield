@@ -1,0 +1,405 @@
+# Configuration posture rules. Each rule evaluates assets of a given type with a small
+# expression over `cfg` (the asset's config dict) and `asset` (row). A rule FIRES when the
+# expression is true. Expressions are AST-validated (detection/safe_expr.py), not eval'd raw.
+#
+#   controls     policy clause IDs the rule enforces — this is what lets the RAG layer join
+#                "policy says X" to "these resources violate X"
+#   mitre        ATT&CK techniques the misconfiguration enables (empty = compliance-only)
+#   exposure     internet | identity | data | none — feeds the risk score
+#   remediation  what to do; `fix` is the command, with {name} / {project} filled per asset
+
+- id: BS-001
+  title: Storage bucket is publicly accessible
+  type: bucket
+  severity: critical
+  when: "cfg.get('public') is True"
+  controls: [CSP-3.1, DRS-2.3, REG-DIG-4]
+  evidence: ["public"]
+  mitre: [T1530]
+  exposure: internet
+  remediation: Remove the allUsers / allAuthenticatedUsers binding and enforce public access prevention.
+  fix: "gcloud storage buckets update gs://{name} --public-access-prevention --project={project}"
+
+- id: BS-002
+  title: Bucket lacks uniform bucket-level access
+  type: bucket
+  severity: medium
+  when: "cfg.get('uniform_access') is False"
+  controls: [CSP-3.2]
+  evidence: ["uniform_access"]
+  mitre: []
+  exposure: data
+  remediation: Enable uniform bucket-level access so permissions are managed only through IAM.
+  fix: "gcloud storage buckets update gs://{name} --uniform-bucket-level-access --project={project}"
+
+- id: BS-003
+  title: Restricted-data bucket not encrypted with CMEK
+  type: bucket
+  severity: high
+  when: "asset['sensitivity'] == 'restricted' and not cfg.get('cmek')"
+  controls: [CSP-4.1, REG-DIG-5]
+  evidence: ["cmek"]
+  mitre: []
+  exposure: data
+  remediation: Set a default customer-managed key from the bank key ring and rewrite existing objects.
+  fix: "gcloud storage buckets update gs://{name} --default-encryption-key=projects/{project}/locations/asia-south1/keyRings/bank/cryptoKeys/KEY"
+
+- id: BS-004
+  title: Restricted-data bucket has no object versioning
+  type: bucket
+  severity: medium
+  when: "asset['sensitivity'] == 'restricted' and not cfg.get('versioning')"
+  controls: [CSP-3.4]
+  evidence: ["versioning"]
+  mitre: [T1485]
+  exposure: data
+  remediation: Enable object versioning so deletions and overwrites are recoverable.
+  fix: "gcloud storage buckets update gs://{name} --versioning --project={project}"
+
+- id: BS-005
+  title: Resource stored outside approved data-residency regions
+  type: [bucket, cloudsql, bigquery_dataset, compute_instance]
+  severity: critical
+  when: "asset['region'] is not None and asset['region'] not in ALLOWED_REGIONS and asset['sensitivity'] == 'restricted'"
+  controls: [DRS-1.1, DRS-1.2, REG-DIG-1]
+  evidence: []
+  mitre: []
+  exposure: data
+  remediation: Recreate the resource in asia-south1 / asia-south2, migrate the data, delete the foreign copy, and enforce the org policy so it cannot recur.
+  fix: "gcloud resource-manager org-policies allow constraints/gcp.resourceLocations in:asia-south1-locations in:asia-south2-locations --project={project}"
+
+- id: BS-006
+  title: Restricted-data bucket has no retention policy
+  type: bucket
+  severity: medium
+  when: "asset['sensitivity'] == 'restricted' and cfg.get('retention_days', 0) == 0"
+  controls: [CSP-3.4]
+  evidence: ["retention_days"]
+  mitre: [T1485]
+  exposure: data
+  remediation: Set a retention period appropriate to the record class.
+  fix: "gcloud storage buckets update gs://{name} --retention-period=365d --project={project}"
+
+- id: BS-007
+  title: Log bucket retention is not locked or is under 365 days
+  type: bucket
+  severity: high
+  when: "cfg.get('log_bucket') is True and (cfg.get('locked') is not True or cfg.get('retention_days', 0) < 365)"
+  controls: [LOG-1.3, REG-DIG-6]
+  evidence: ["locked", "retention_days"]
+  mitre: [T1562.008, T1070]
+  exposure: data
+  remediation: Raise retention to at least 365 days and lock the retention policy so logs cannot be deleted early.
+  fix: "gcloud storage buckets update gs://{name} --retention-period=365d --lock-retention-period --project={project}"
+
+- id: BS-010
+  title: Cloud SQL instance has a public IP
+  type: cloudsql
+  severity: critical
+  when: "cfg.get('public_ip') is True"
+  controls: [CSP-5.1, REG-DIG-4]
+  evidence: ["public_ip"]
+  mitre: [T1190]
+  exposure: internet
+  remediation: Remove the public IP and reach the instance over private IP or Private Service Connect.
+  fix: "gcloud sql instances patch {name} --no-assign-ip --project={project}"
+
+- id: BS-011
+  title: Cloud SQL does not require SSL/TLS
+  type: cloudsql
+  severity: high
+  when: "cfg.get('require_ssl') is False"
+  controls: [CSP-4.3, REG-DIG-5]
+  evidence: ["require_ssl"]
+  mitre: [T1040]
+  exposure: data
+  remediation: Reject unencrypted connections.
+  fix: "gcloud sql instances patch {name} --ssl-mode=ENCRYPTED_ONLY --project={project}"
+
+- id: BS-012
+  title: Cloud SQL automated backups disabled
+  type: cloudsql
+  severity: high
+  when: "cfg.get('backups_enabled') is False"
+  controls: [CSP-7.2]
+  evidence: ["backups_enabled"]
+  mitre: [T1490]
+  exposure: data
+  remediation: Enable automated backups with point-in-time recovery, retained at least 35 days.
+  fix: "gcloud sql instances patch {name} --backup-start-time=20:30 --enable-point-in-time-recovery --retained-backups-count=35 --project={project}"
+
+- id: BS-013
+  title: Restricted database not encrypted with CMEK
+  type: cloudsql
+  severity: high
+  when: "asset['sensitivity'] == 'restricted' and cfg.get('cmek') is False"
+  controls: [CSP-4.1, REG-DIG-5]
+  evidence: ["cmek"]
+  mitre: []
+  exposure: data
+  remediation: CMEK cannot be added in place — clone to a new instance created with a customer-managed key, then cut over.
+  fix: "gcloud sql instances create {name}-cmek --disk-encryption-key=projects/{project}/locations/asia-south1/keyRings/bank/cryptoKeys/KEY --region=asia-south1"
+
+- id: BS-020
+  title: Service account holds a primitive role (owner/editor)
+  type: service_account
+  severity: critical
+  when: "any(r in ('roles/owner', 'roles/editor') for r in cfg.get('roles', []))"
+  controls: [IAM-2.1, IAM-2.2, REG-DIG-3]
+  evidence: ["roles"]
+  mitre: [T1078.004, T1098.003]
+  exposure: identity
+  remediation: Replace the primitive role with predefined or custom roles scoped to the task.
+  fix: "gcloud projects remove-iam-policy-binding {project} --member=serviceAccount:{name}@{project}.iam.gserviceaccount.com --role=roles/owner"
+
+- id: BS-021
+  title: User-managed service account key older than 90 days
+  type: service_account
+  severity: high
+  when: "any(k.get('age_days', 0) > 90 for k in cfg.get('user_managed_keys', []))"
+  controls: [IAM-3.2]
+  evidence: ["user_managed_keys"]
+  mitre: [T1078.004, T1552]
+  exposure: identity
+  remediation: Rotate the key and disable the previous one within 24 hours — or remove keys entirely with Workload Identity.
+  fix: "gcloud iam service-accounts keys disable KEY_ID --iam-account={name}@{project}.iam.gserviceaccount.com"
+
+- id: BS-022
+  title: User-managed key on a service account that runs inside the platform
+  type: service_account
+  severity: medium
+  when: "len(cfg.get('user_managed_keys', [])) > 0 and not cfg.get('external_workload')"
+  controls: [IAM-3.1]
+  evidence: ["user_managed_keys", "external_workload"]
+  mitre: [T1552]
+  exposure: identity
+  remediation: Move the workload to Workload Identity or an attached service account and delete the keys.
+  fix: "gcloud iam service-accounts keys delete KEY_ID --iam-account={name}@{project}.iam.gserviceaccount.com"
+
+- id: BS-030
+  title: Firewall allows SSH/RDP from the internet
+  type: firewall
+  severity: critical
+  when: "cfg.get('direction') == 'INGRESS' and '0.0.0.0/0' in cfg.get('source_ranges', []) and any(p in ('22', '3389') for p in cfg.get('ports', []))"
+  controls: [CSP-6.1, REG-DIG-4]
+  evidence: ["source_ranges", "ports"]
+  mitre: [T1133, T1021]
+  exposure: internet
+  remediation: Restrict the source to the Identity-Aware Proxy range and reach hosts through IAP or the bastion.
+  fix: "gcloud compute firewall-rules update {name} --source-ranges=35.235.240.0/20 --project={project}"
+
+- id: BS-040
+  title: Compute instance uses the default service account
+  type: compute_instance
+  severity: medium
+  when: "cfg.get('service_account') == 'default'"
+  controls: [IAM-2.3]
+  evidence: ["service_account"]
+  mitre: [T1078.004]
+  exposure: identity
+  remediation: Stop the instance and attach a dedicated, minimally scoped service account.
+  fix: "gcloud compute instances set-service-account {name} --service-account=DEDICATED_SA@{project}.iam.gserviceaccount.com --project={project}"
+
+- id: BS-041
+  title: Restricted-workload disk not CMEK encrypted
+  type: compute_instance
+  severity: high
+  when: "asset['sensitivity'] == 'restricted' and cfg.get('disk_cmek') is False"
+  controls: [CSP-4.1]
+  evidence: ["disk_cmek"]
+  mitre: []
+  exposure: data
+  remediation: Snapshot the disk and recreate it with a customer-managed key.
+  fix: "gcloud compute disks create {name}-cmek --source-snapshot=SNAPSHOT --kms-key=projects/{project}/locations/asia-south1/keyRings/bank/cryptoKeys/KEY"
+
+- id: BS-042
+  title: Instance without OS Login or Shielded VM
+  type: compute_instance
+  severity: medium
+  when: "cfg.get('os_login') is False or cfg.get('shielded_vm') is False"
+  controls: [CSP-6.3]
+  evidence: ["os_login", "shielded_vm"]
+  mitre: [T1098.004]
+  exposure: identity
+  remediation: Enable OS Login and the Shielded VM features (secure boot, vTPM, integrity monitoring).
+  fix: "gcloud compute instances add-metadata {name} --metadata enable-oslogin=TRUE --project={project}"
+
+- id: BS-043
+  title: Compute instance has an external IP and is not an approved bastion
+  type: compute_instance
+  severity: high
+  when: "cfg.get('external_ip') is True and not cfg.get('approved_bastion')"
+  controls: [CSP-5.2]
+  evidence: ["external_ip", "approved_bastion"]
+  mitre: [T1190, T1133]
+  exposure: internet
+  remediation: Remove the external IP; route egress through Cloud NAT and ingress through a load balancer or IAP.
+  fix: "gcloud compute instances delete-access-config {name} --access-config-name='External NAT' --project={project}"
+
+- id: BS-050
+  title: KMS key rotation period exceeds 90 days
+  type: kms_key
+  severity: medium
+  when: "cfg.get('rotation_period_days', 9999) > 90"
+  controls: [CSP-4.2]
+  evidence: ["rotation_period_days"]
+  mitre: []
+  exposure: data
+  remediation: Set automatic rotation to 90 days or less.
+  fix: "gcloud kms keys update {name} --keyring=bank --location=asia-south1 --rotation-period=90d --next-rotation-time=NEXT_ROTATION_TIME --project={project}"
+
+- id: BS-051
+  title: Key protecting card data rotates slower than every 30 days
+  type: kms_key
+  severity: high
+  when: "cfg.get('protects') == 'card_data' and cfg.get('rotation_period_days', 9999) > 30"
+  controls: [CSP-4.2, REG-DIG-5]
+  evidence: ["rotation_period_days", "protects"]
+  mitre: []
+  exposure: data
+  remediation: Card-data keys must rotate every 30 days.
+  fix: "gcloud kms keys update {name} --keyring=bank --location=asia-south1 --rotation-period=30d --next-rotation-time=NEXT_ROTATION_TIME --project={project}"
+
+- id: BS-060
+  title: Secret has no rotation schedule or is overdue
+  type: secret
+  severity: high
+  when: "cfg.get('rotation_days', 0) == 0 or cfg.get('last_rotated_days_ago', 0) > cfg.get('rotation_days', 0)"
+  controls: [IAM-3.3]
+  evidence: ["rotation_days", "last_rotated_days_ago"]
+  mitre: [T1552]
+  exposure: identity
+  remediation: Add a rotation schedule and rotate the secret now.
+  fix: "gcloud secrets update {name} --rotation-period=2592000s --next-rotation-time=NEXT_ROTATION_TIME --project={project}"
+
+- id: BS-061
+  title: Restricted secret uses automatic (global) replication
+  type: secret
+  severity: medium
+  when: "asset['sensitivity'] == 'restricted' and cfg.get('replication') == 'automatic'"
+  controls: [DRS-1.3]
+  evidence: ["replication"]
+  mitre: []
+  exposure: data
+  remediation: Replication cannot be changed in place — recreate the secret pinned to approved regions and delete the old one.
+  fix: "gcloud secrets create {name}-in --replication-policy=user-managed --locations=asia-south1,asia-south2 --project={project}"
+
+- id: BS-070
+  title: BigQuery dataset shared with all authenticated users
+  type: bigquery_dataset
+  severity: critical
+  when: "cfg.get('public') is True"
+  controls: [CSP-3.1, DRS-2.3]
+  evidence: ["public"]
+  mitre: [T1530]
+  exposure: internet
+  remediation: Remove the allAuthenticatedUsers / allUsers entry from the dataset access list.
+  fix: "bq show --format=prettyjson {project}:{name} > acl.json  # delete the allAuthenticatedUsers entry, then: bq update --source acl.json {project}:{name}"
+
+- id: BS-071
+  title: Restricted BigQuery dataset not encrypted with CMEK
+  type: bigquery_dataset
+  severity: high
+  when: "asset['sensitivity'] == 'restricted' and cfg.get('cmek') is False"
+  controls: [CSP-4.1, REG-DIG-5]
+  evidence: ["cmek"]
+  mitre: []
+  exposure: data
+  remediation: Set a default customer-managed key on the dataset and re-materialise existing tables.
+  fix: "bq update --default_kms_key=projects/{project}/locations/asia-south1/keyRings/bank/cryptoKeys/KEY {project}:{name}"
+
+- id: BS-080
+  title: GKE cluster uses legacy ABAC or public nodes
+  type: gke_cluster
+  severity: high
+  when: "cfg.get('legacy_abac') is True or cfg.get('private_nodes') is False"
+  controls: [CSP-6.2]
+  evidence: ["legacy_abac", "private_nodes"]
+  mitre: [T1133]
+  exposure: internet
+  remediation: Disable legacy authorization and move workloads to private node pools.
+  fix: "gcloud container clusters update {name} --no-enable-legacy-authorization --region=asia-south1 --project={project}"
+
+- id: BS-081
+  title: GKE cluster without Workload Identity or network policy
+  type: gke_cluster
+  severity: medium
+  when: "cfg.get('workload_identity') is False or cfg.get('network_policy') is False"
+  controls: [CSP-6.2]
+  evidence: ["workload_identity", "network_policy"]
+  mitre: [T1552]
+  exposure: identity
+  remediation: Enable Workload Identity and network policy enforcement.
+  fix: "gcloud container clusters update {name} --workload-pool={project}.svc.id.goog --region=asia-south1 --project={project}"
+
+- id: BS-090
+  title: Admin accounts without enforced MFA
+  type: project
+  severity: critical
+  when: "cfg.get('admin_mfa_enforced') is False or any(v is False for v in cfg.get('admin_mfa', {}).values())"
+  controls: [IAM-1.1, REG-DIG-2]
+  evidence: ["admin_mfa_enforced", "admin_mfa"]
+  mitre: [T1078.004, T1110]
+  exposure: identity
+  remediation: Enforce phishing-resistant 2-step verification for the admin group and suspend accounts that have not enrolled (IAM-1.1 requires suspension, not a flag).
+  fix: "# Workspace / Cloud Identity admin console: Security > 2-Step Verification > enforce for the admins OU, security keys only"
+
+- id: BS-091
+  title: Cloud Audit Logs not enabled for project
+  type: project
+  severity: critical
+  when: "cfg.get('audit_logs_enabled') is False"
+  controls: [LOG-1.1, REG-DIG-6]
+  evidence: ["audit_logs_enabled"]
+  mitre: [T1562.008]
+  exposure: data
+  remediation: Enable Admin Activity and Data Access audit logs for allServices in the project IAM policy.
+  fix: "gcloud projects get-iam-policy {project} --format=json > policy.json  # add auditConfigs for allServices (ADMIN_READ, DATA_READ, DATA_WRITE), then: gcloud projects set-iam-policy {project} policy.json"
+
+- id: BS-092
+  title: Log retention below 365 days
+  type: project
+  severity: high
+  when: "cfg.get('log_retention_days', 0) < 365"
+  controls: [LOG-1.3, REG-DIG-6]
+  evidence: ["log_retention_days"]
+  mitre: [T1070]
+  exposure: data
+  remediation: Raise the log bucket retention to at least 365 days.
+  fix: "gcloud logging buckets update _Default --location=global --retention-days=365 --project={project}"
+
+- id: BS-093
+  title: Restricted project outside a VPC Service Controls perimeter
+  type: project
+  severity: high
+  when: "asset['sensitivity'] == 'restricted' and cfg.get('vpc_sc_perimeter') is False"
+  controls: [CSP-5.3, DRS-2.1]
+  evidence: ["vpc_sc_perimeter"]
+  mitre: [T1537, T1567]
+  exposure: data
+  remediation: Add the project to the restricted-data service perimeter.
+  fix: "gcloud access-context-manager perimeters update bank_restricted --add-resources=projects/PROJECT_NUMBER"
+
+- id: BS-094
+  title: Project has no named business or technical owner
+  type: project
+  severity: low
+  when: "not cfg.get('business_owner') or not cfg.get('technical_owner')"
+  controls: [CSP-1.2, REG-DIG-8]
+  evidence: ["business_owner", "technical_owner"]
+  mitre: []
+  exposure: none
+  remediation: Record a named business owner and technical owner in the asset inventory; ownerless projects are disabled after 30 days.
+  fix: "gcloud projects update {project} --update-labels=business-owner=NAME,technical-owner=NAME"
+
+- id: BS-095
+  title: Project audit logs are not exported to the central log bucket
+  type: project
+  severity: high
+  when: "cfg.get('central_log_sink') is False"
+  controls: [LOG-1.2]
+  evidence: ["central_log_sink"]
+  mitre: [T1562.008]
+  exposure: data
+  remediation: Create the aggregated sink to the central security log bucket in shared-services.
+  fix: "gcloud logging sinks create central-audit storage.googleapis.com/central-audit-logs --log-filter='logName:cloudaudit.googleapis.com' --project={project}"

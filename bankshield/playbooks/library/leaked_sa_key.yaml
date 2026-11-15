@@ -1,0 +1,30 @@
+id: PB-LEAKED-KEY
+title: Leaked / misused service account key
+triggers: [LD-003, LD-002, LD-008]
+sop: IR-2.1
+severity: 1
+steps:
+  - id: disable_key
+    title: Disable the compromised service account key
+    mode: auto            # IR-3.2: pre-approved ONLY when the evidence shows use from an unapproved country;
+                          # for LD-002 / LD-008 the engine degrades this step to `approve`
+    action: disable_sa_key
+    requires_evidence: [country]
+  - id: revoke_sessions
+    title: Revoke active sessions / tokens for the service account
+    mode: approve
+    action: revoke_sessions
+  - id: review_actions
+    title: Review every action taken with the key since last known-good use
+    mode: recommend
+    action: none
+    guidance: Query audit logs for the principal over the last 24h; diff against baseline.
+  - id: rotate_downstream
+    title: Rotate secrets the key could reach
+    mode: approve
+    action: rotate_secrets
+  - id: classify_and_notify
+    title: Classify severity and start the regulatory clock
+    mode: recommend
+    action: none
+    guidance: Per IR-1.2 the clock starts at classification. Escalate to CISO within 30 minutes (IR-4.1).

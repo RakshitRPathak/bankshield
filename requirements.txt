@@ -1,0 +1,17 @@
+fastapi>=0.110
+uvicorn>=0.27
+pydantic>=2
+pyyaml>=6
+numpy>=1.26
+scikit-learn>=1.4
+rank-bm25>=0.2.2
+httpx>=0.27
+pytest>=8
+
+# Optional — real LLMs / embeddings / GCP ingestion
+# openai>=1.30
+# anthropic>=0.30
+# google-cloud-aiplatform>=1.50
+# sentence-transformers>=2.7
+# google-cloud-asset>=3.24
+# google-cloud-logging>=3.10

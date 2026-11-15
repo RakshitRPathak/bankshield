@@ -1,0 +1,24 @@
+id: PB-PUBLIC-STORAGE
+title: Public exposure of restricted storage
+triggers: [BS-001, BS-070]
+sop: IR-2.2
+severity: 1
+steps:
+  - id: remove_public
+    title: Remove allUsers / allAuthenticatedUsers binding
+    mode: auto            # IR-3.2 pre-approves this for RESTRICTED resources only
+    action: make_private
+    requires_sensitivity: restricted
+  - id: uniform_access
+    title: Enable uniform bucket-level access
+    mode: approve
+    action: enable_uniform_access
+  - id: snapshot_logs
+    title: Snapshot access logs for the exposure window
+    mode: approve
+    action: snapshot_logs
+  - id: exposure_assessment
+    title: Open a data-exposure assessment
+    mode: recommend
+    action: none
+    guidance: Determine what objects were readable, by whom, for how long. Decide reportability under REG-DIG-7.

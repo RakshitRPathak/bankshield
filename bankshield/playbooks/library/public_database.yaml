@@ -1,0 +1,23 @@
+id: PB-PUBLIC-DB
+title: Managed database reachable on a public IP
+triggers: [BS-010]
+sop: CSP-5.1
+severity: 1
+steps:
+  - id: remove_public_ip
+    title: Remove the public IP from the instance
+    mode: approve         # affects production availability → IR-3.1
+    action: disable_public_ip
+  - id: enforce_tls
+    title: Reject unencrypted connections
+    mode: approve
+    action: enforce_ssl
+  - id: rotate_credentials
+    title: Rotate database credentials reachable during the exposure
+    mode: approve
+    action: rotate_secrets
+  - id: exposure_assessment
+    title: Open a data-exposure assessment
+    mode: recommend
+    action: none
+    guidance: Review connection logs for the exposure window. Decide reportability under REG-DIG-7.

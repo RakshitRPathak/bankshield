@@ -1,0 +1,15 @@
+id: PB-EXPOSED-ADMIN-PORT
+title: SSH / RDP open to the internet
+triggers: [BS-030]
+sop: CSP-6.1
+severity: 2
+steps:
+  - id: restrict_source
+    title: Restrict the rule to the Identity-Aware Proxy range
+    mode: approve         # can cut off an administrator mid-session → IR-3.1
+    action: restrict_firewall
+  - id: review_connections
+    title: Review inbound connections accepted while the port was open
+    mode: recommend
+    action: none
+    guidance: Pull VPC flow logs and OS login records for the exposure window; look for successful sessions from outside India (IAM-1.3).

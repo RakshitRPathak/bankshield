@@ -1,0 +1,24 @@
+id: PB-LOG-TAMPER
+title: Audit logging disabled or log sink removed
+triggers: [LD-006, BS-091]
+sop: LOG-1.1
+severity: 1
+steps:
+  - id: restore_logging
+    title: Re-enable audit logs and restore the central log sink
+    mode: approve         # not on the IR-3.2 pre-approved list, so a human decides
+    action: restore_audit_logging
+  - id: suspend_identity
+    title: Suspend the identity that changed the logging configuration
+    mode: approve
+    action: suspend_user
+  - id: bound_the_gap
+    title: Establish the exact window with no audit coverage
+    mode: recommend
+    action: none
+    guidance: Everything done in the project during the gap is unobserved. Treat the window as a suspected compromise (IR-1.1 Severity 2) until other telemetry says otherwise.
+  - id: classify_and_notify
+    title: Classify severity and start the regulatory clock
+    mode: recommend
+    action: none
+    guidance: LOG-1.1 makes this a critical security event. Per IR-1.2 the clock starts at classification; escalate to the CISO within 30 minutes (IR-4.1).

@@ -1,0 +1,19 @@
+id: PB-COMPROMISED-ACCOUNT
+title: Compromised human account (impossible travel, brute force, foreign access)
+triggers: [LD-004, LD-007, LD-010]
+sop: IR-2.4
+severity: 2
+steps:
+  - id: revoke_sessions
+    title: Revoke all sessions for the user
+    mode: approve
+    action: revoke_sessions
+  - id: force_reenrol
+    title: Force password reset and MFA re-enrolment
+    mode: approve
+    action: force_reenrol
+  - id: review_window
+    title: Review actions taken in the suspect window
+    mode: recommend
+    action: none
+    guidance: Pay special attention to configuration changes (e.g. publicIp=true on a database).
