@@ -11,7 +11,11 @@ Metrics:
   findings_acc    — state questions return >=1 live finding
   alerts / remed. — alert and remediation intents return what they promise
 
-Usage:  python eval/run_eval.py [--json out.json] [--min 90]
+With a real backend, answers the model failed to produce (error or timeout) are answered by the
+offline composer instead. They are counted, and the run fails if there are any unless --allow-fallback
+is given, so a model's scores never silently include the composer's answers.
+
+Usage:  python eval/run_eval.py [--json out.json] [--min 90] [--allow-fallback]
 The corpus and estate are whatever the current database holds (run scripts/seed.py first).
 """
 
@@ -39,6 +43,8 @@ def main() -> int:
     ap.add_argument("--json", help="write the full result to this file")
     ap.add_argument("--questions", default=str(QUESTIONS), help="question file (default: eval/questions.jsonl)")
     ap.add_argument("--min", type=float, default=90.0, help="fail if any core metric is below this percentage")
+    ap.add_argument("--allow-fallback", action="store_true",
+                    help="with a real backend, don't fail when some answers came from the offline fallback composer")
     args = ap.parse_args()
 
     cases = [json.loads(l) for l in Path(args.questions).read_text(encoding="utf-8").splitlines() if l.strip()]
@@ -46,6 +52,7 @@ def main() -> int:
     stats = {m: [0, 0] for m in METRICS}
     by_tag: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     failures, rr, lat = [], [], []
+    backends: dict[str, int] = defaultdict(int)
 
     def score(metric: str, ok: bool, case: dict, detail=None) -> bool:
         stats[metric][1] += 1
@@ -58,6 +65,8 @@ def main() -> int:
         t0 = time.perf_counter()
         a = ask(conn, c["q"], user=c.get("user", "asha.analyst"))
         lat.append((time.perf_counter() - t0) * 1000)
+        if not a.refused:
+            backends[a.backend] += 1
         retrieved = [r["clause_id"] for r in a.retrieved]
         ok_all = True
         if "expect" in c:
@@ -95,6 +104,11 @@ def main() -> int:
     mrr = sum(rr) / len(rr) if rr else 0.0
     print(f"BankShield RAG eval — {n} questions · backend {config.LLM_BACKEND} · embeddings {config.EMBEDDING_BACKEND}")
     print(f"  latency p50 {p50:.0f} ms · p95 {p95:.0f} ms        MRR {mrr:.3f}")
+    fallbacks = backends.get("extractive(fallback)", 0)
+    print("  answered by: " + " · ".join(f"{b} {k}" for b, k in sorted(backends.items())))
+    if fallbacks:
+        print(f"  WARNING: {fallbacks} answer(s) came from the offline fallback, not the {config.LLM_BACKEND} model "
+              f"(model error or timeout; see BANKSHIELD_LLM_TIMEOUT)")
     for k in METRICS:
         got, tot = stats[k]
         if tot:
@@ -110,9 +124,12 @@ def main() -> int:
         Path(args.json).write_text(json.dumps({
             "questions": n, "backend": config.LLM_BACKEND, "embeddings": config.EMBEDDING_BACKEND, "mrr": round(mrr, 4),
             "latency_ms": {"p50": round(p50, 1), "p95": round(p95, 1)},
+            "answered_by": dict(backends), "fallbacks": fallbacks,
             "metrics": {k: {"passed": v[0], "total": v[1]} for k, v in stats.items() if v[1]},
             "by_category": {t: {"passed": g, "total": tot} for t, (g, tot) in by_tag.items()},
             "failures": [list(f) for f in failures]}, indent=2, default=str), encoding="utf-8")
+    if fallbacks and not args.allow_fallback:
+        return 1
     return 0 if worst >= args.min else 1
 
 
