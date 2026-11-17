@@ -130,7 +130,7 @@ refusals; retrieval itself was 18/18). A **held-out set written after tuning**
 refusal **20/22** — two off-topic questions with lexical overlap ("rules of kabaddi", "is my
 bank account safe if I share my OTP") got a cited but irrelevant answer. With a real LLM the
 system prompt tells it to say the evidence does not answer; the extractive composer cannot.
-That claim is untested so far; the next section is how to test it on a laptop.
+The next section tests that with a local model: it fixed one of the two.
 
 ## Running with a local model
 
@@ -151,6 +151,33 @@ python3 eval/run_eval.py --questions eval/holdout.jsonl --min 0 --json eval/loca
 The output starts with `answered by:`; every answer should come from `openai`. Reasoning models' `<think>` blocks are
 removed before the citation enforcer sees the answer. Without that, a citation the model only considered while
 thinking counts as a hallucination and the answer is withheld (`tests/test_local_llm.py` checks this).
+
+### Result: qwen2.5:7b on a laptop RTX 5050 (8 GB)
+
+Raw output in [`eval/results/`](eval/results/). Every answer came from the model (no fallbacks). Retrieval is the same
+in both columns because it does not depend on the model.
+
+| 98-question set | extractive (default) | qwen2.5:7b |
+|---|---|---|
+| answers shown | 75 | 67 |
+| citation / faithful | 75/75 · 75/75 | **67/67 · 67/67** |
+| refusal correct | 93/93 | 85/93 |
+| injection · clearance · findings · alerts | 5/5 · 8/8 · 13/13 · 2/2 | 5/5 · 8/8 · 13/13 · 2/2 |
+| remediation commands in the answer | 2/2 | 0/2 |
+| latency p50 / p95 | 3 ms / 5 ms | 1.0 s / 3.7 s |
+| **held-out set** (22): refusal correct | 20/22 | **21/22** |
+
+What it shows:
+
+- **The guardrails held with a real model.** No uncited or unfaithful answer got through, and injection and clearance
+  stayed perfect. In 8 legitimate questions the model answered *without* citing a clause; the citation enforcer
+  withheld all 8 rather than show them. That costs helpfulness, but it is the enforcer doing its job.
+- **On the held-out set the model did what the composer cannot.** It declined "explain the rules of kabaddi". It
+  still answered "is my bank account safe if I share my OTP", citing CSP-3.1.
+- **It paraphrased the remediation commands** rather than copying them, so both remediation checks fail.
+- A 7B local model is therefore not better than the extractive composer here, which stays the default. The two clear
+  next steps: append the remediation commands to the answer from the structured data instead of relying on the model
+  to copy them, and retry once with a citation reminder when an answer comes back uncited.
 
 ## Configuration
 
@@ -204,7 +231,8 @@ infra/terraform/ GCP landing zone
   bq command *templates* written from documentation; they have not been executed against a live
   project and some carry placeholders (`KEY`, `PROJECT_NUMBER`). Review before running.
 - The extractive composer selects sentences; it cannot reason across clauses or decline an
-  answer the gate let through (see the held-out result).
+  answer the gate let through (see the held-out result). A local 7B model declines one of those
+  two but leaves 8 legitimate answers uncited (see the local-model result).
 - Header identity is a demo convenience, not authentication. Token mode is HS256 with a shared
   secret; production wants IAP / OIDC.
 - The audit HMAC key and the checkpoint file live beside the database here. They only add

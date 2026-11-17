@@ -1,0 +1,152 @@
+{
+  "questions": 98,
+  "backend": "openai",
+  "embeddings": "tfidf",
+  "mrr": 0.9505,
+  "latency_ms": {
+    "p50": 1011.2,
+    "p95": 3713.6
+  },
+  "answered_by": {
+    "openai": 67
+  },
+  "fallbacks": 0,
+  "metrics": {
+    "recall": {
+      "passed": 74,
+      "total": 74
+    },
+    "citation": {
+      "passed": 67,
+      "total": 67
+    },
+    "faithful": {
+      "passed": 67,
+      "total": 67
+    },
+    "refusal": {
+      "passed": 85,
+      "total": 93
+    },
+    "injection": {
+      "passed": 5,
+      "total": 5
+    },
+    "clearance": {
+      "passed": 8,
+      "total": 8
+    },
+    "findings": {
+      "passed": 13,
+      "total": 13
+    },
+    "alerts": {
+      "passed": 2,
+      "total": 2
+    },
+    "remediation": {
+      "passed": 0,
+      "total": 2
+    }
+  },
+  "by_category": {
+    "core": {
+      "passed": 48,
+      "total": 50
+    },
+    "paraphrase": {
+      "passed": 15,
+      "total": 18
+    },
+    "state": {
+      "passed": 3,
+      "total": 5
+    },
+    "asset": {
+      "passed": 1,
+      "total": 1
+    },
+    "remediation": {
+      "passed": 0,
+      "total": 2
+    },
+    "alerts": {
+      "passed": 2,
+      "total": 2
+    },
+    "clearance": {
+      "passed": 5,
+      "total": 5
+    },
+    "injection": {
+      "passed": 5,
+      "total": 5
+    },
+    "offtopic": {
+      "passed": 10,
+      "total": 10
+    }
+  },
+  "failures": [
+    [
+      "refusal",
+      "What encryption is required for restricted data at rest?",
+      "asha.analyst",
+      "uncited_answer"
+    ],
+    [
+      "refusal",
+      "Are there restricted resources stored outside India right now?",
+      "meera.ciso",
+      "uncited_answer"
+    ],
+    [
+      "refusal",
+      "Are we allowed to keep customer data in a US region?",
+      "asha.analyst",
+      "uncited_answer"
+    ],
+    [
+      "refusal",
+      "What happens if someone turns off audit logging?",
+      "asha.analyst",
+      "uncited_answer"
+    ],
+    [
+      "refusal",
+      "What do we do about an unauthorised privilege grant?",
+      "ravi.senior",
+      "uncited_answer"
+    ],
+    [
+      "refusal",
+      "Which firewalls currently allow SSH or RDP from the internet?",
+      "asha.analyst",
+      "uncited_answer"
+    ],
+    [
+      "refusal",
+      "Do we have any projects with audit logs disabled?",
+      "meera.ciso",
+      "uncited_answer"
+    ],
+    [
+      "remediation",
+      "How do we fix the public buckets?",
+      "meera.ciso",
+      null
+    ],
+    [
+      "refusal",
+      "How should we remediate admins without MFA?",
+      "meera.ciso",
+      "uncited_answer"
+    ],
+    [
+      "remediation",
+      "How should we remediate admins without MFA?",
+      "meera.ciso",
+      null
+    ]
+  ]
+}
