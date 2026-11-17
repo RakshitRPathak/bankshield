@@ -5,7 +5,8 @@
   to run the eval harness without any network.
 - OpenAILLM / VertexLLM / AnthropicLLM: real models. For a bank, Vertex inside the VPC-SC
   perimeter (or a self-hosted model on GKE) is the deployable option; the others are here for
-  local experiments.
+  local experiments. OpenAILLM talks to any OpenAI-compatible server, so OPENAI_BASE_URL can
+  point it at a local model (Ollama: http://localhost:11434/v1; LM Studio: http://localhost:1234/v1).
 
 Whatever the backend, its output goes through the same citation enforcer and output DLP —
 the guardrails do not depend on the model behaving.
@@ -95,19 +96,33 @@ def _best_sentence(text: str, q_terms: set[str]) -> str:
     return best if best != sents[0] and len(q_terms & set(re.findall(r"[a-z0-9]+", best.lower()))) > 1 else sents[0]
 
 
+_THINK = re.compile(r"<think>.*?</think>", re.S)
+
+
+def strip_thinking(text: str) -> str:
+    """Drop the <think>...</think> reasoning that local reasoning models (Qwen3, DeepSeek-R1) emit before
+    answering, so the citation enforcer and DLP only see the answer. A reply cut off mid-reasoning has
+    no answer, so everything after an unclosed <think> goes too."""
+    text = _THINK.sub("", text)
+    open_at = text.find("<think>")
+    return (text[:open_at] if open_at >= 0 else text).strip()
+
+
 class OpenAILLM:
     name = "openai"
 
     def __init__(self) -> None:
         from openai import OpenAI  # lazy import
-        self.client = OpenAI(timeout=30)
+        # The SDK reads OPENAI_BASE_URL itself. Local servers ignore the key but the SDK insists on one.
+        key = os.getenv("OPENAI_API_KEY") or ("local" if os.getenv("OPENAI_BASE_URL") else None)
+        self.client = OpenAI(api_key=key, timeout=config.LLM_TIMEOUT_S)
 
     def generate(self, system: str, user: str, context: dict[str, Any] | None = None) -> str:
         r = self.client.chat.completions.create(
             model=config.OPENAI_MODEL, temperature=0,
             messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         )
-        return r.choices[0].message.content or ""
+        return strip_thinking(r.choices[0].message.content or "")
 
 
 class VertexLLM:
@@ -128,7 +143,7 @@ class AnthropicLLM:
 
     def __init__(self) -> None:
         import anthropic  # lazy import
-        self.client = anthropic.Anthropic(timeout=30)
+        self.client = anthropic.Anthropic(timeout=config.LLM_TIMEOUT_S)
         self.model = os.getenv("BANKSHIELD_ANTHROPIC_MODEL", "claude-haiku-5-5")
 
     def generate(self, system: str, user: str, context: dict[str, Any] | None = None) -> str:

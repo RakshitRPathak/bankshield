@@ -17,6 +17,9 @@ PLAYBOOK_DIR = Path(os.getenv("BANKSHIELD_PLAYBOOKS", ROOT / "bankshield" / "pla
 # LLM backend: "extractive" (offline, deterministic), "openai", or "vertex".
 LLM_BACKEND = os.getenv("BANKSHIELD_LLM", "extractive")
 OPENAI_MODEL = os.getenv("BANKSHIELD_OPENAI_MODEL", "gpt-4o-mini")
+# Seconds per model call before the pipeline falls back to the offline composer. A local model on a laptop GPU
+# can need more than the default for a long, evidence-heavy answer.
+LLM_TIMEOUT_S = float(os.getenv("BANKSHIELD_LLM_TIMEOUT", "30"))
 VERTEX_MODEL = os.getenv("BANKSHIELD_VERTEX_MODEL", "gemini-1.5-flash")
 VERTEX_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "")
 VERTEX_LOCATION = os.getenv("BANKSHIELD_VERTEX_LOCATION", "asia-south1")

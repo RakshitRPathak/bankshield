@@ -11,7 +11,7 @@ The LLM, embeddings and ingestion are pluggable so the same code moves to Vertex
 Asset Inventory inside a VPC-SC perimeter.
 
 ```bash
-./run.sh                      # install → seed → 111 tests → eval → console on http://localhost:8000
+./run.sh                      # install → seed → 115 tests → eval → console on http://localhost:8000
 # or step by step
 python -m bankshield seed
 python -m bankshield serve
@@ -79,7 +79,7 @@ python -m bankshield paths    # attack paths, highest risk first
   `incident.approve`, and the approver cannot be the person who opened the incident.
 - **Existence does not leak.** A resource, incident or clause the caller may not see returns
   the same 404 as one that does not exist.
-- **Graceful degradation.** If the LLM backend errors, the offline composer answers and says so.
+- **Graceful degradation.** If the LLM backend errors or times out, the offline composer answers and says so. The eval counts those answers and fails if a model run contains any (`--allow-fallback` to accept them), so a model's scores never silently include the composer's.
 
 ## Users (`X-User` header in demo mode)
 
@@ -130,12 +130,36 @@ refusals; retrieval itself was 18/18). A **held-out set written after tuning**
 refusal **20/22** — two off-topic questions with lexical overlap ("rules of kabaddi", "is my
 bank account safe if I share my OTP") got a cited but irrelevant answer. With a real LLM the
 system prompt tells it to say the evidence does not answer; the extractive composer cannot.
+That claim is untested so far; the next section is how to test it on a laptop.
+
+## Running with a local model
+
+`openai` talks to any OpenAI-compatible server, so `OPENAI_BASE_URL` can point it at a local model (Ollama,
+LM Studio, llama.cpp, vLLM) with no API key or cost. With Ollama under WSL2 or Linux (an 8 GB GPU fits a 7–8B model
+in 4-bit):
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh                 # once
+OLLAMA_CONTEXT_LENGTH=8192 ollama serve &                     # evidence-heavy prompts overflow small default contexts
+ollama pull qwen2.5:7b
+export BANKSHIELD_LLM=openai OPENAI_BASE_URL=http://localhost:11434/v1 BANKSHIELD_OPENAI_MODEL=qwen2.5:7b
+export BANKSHIELD_LLM_TIMEOUT=120                             # a laptop GPU needs more than the 30 s default
+python3 eval/run_eval.py --json eval/local.json               # the 98 questions
+python3 eval/run_eval.py --questions eval/holdout.jsonl --min 0 --json eval/local_holdout.json
+```
+
+The output starts with `answered by:`; every answer should come from `openai`. Reasoning models' `<think>` blocks are
+removed before the citation enforcer sees the answer. Without that, a citation the model only considered while
+thinking counts as a hallucination and the answer is withheld (`tests/test_local_llm.py` checks this).
 
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `BANKSHIELD_LLM` | `extractive` | `openai`, `vertex`, `anthropic` |
+| `BANKSHIELD_LLM` | `extractive` | `openai` (any OpenAI-compatible server, see `OPENAI_BASE_URL`), `vertex`, `anthropic` |
+| `BANKSHIELD_OPENAI_MODEL` | `gpt-4o-mini` | model name for `openai`, e.g. `qwen2.5:7b` under Ollama |
+| `OPENAI_BASE_URL` | OpenAI | e.g. `http://localhost:11434/v1` for a local model; no `OPENAI_API_KEY` needed then |
+| `BANKSHIELD_LLM_TIMEOUT` | `30` | seconds per model call before falling back to the offline composer |
 | `BANKSHIELD_EMBEDDINGS` | `tfidf` | `lsa` (offline dense), `sentence-transformers` |
 | `BANKSHIELD_AUTH` / `BANKSHIELD_SECRET` | `header` / — | `token` requires signed bearer tokens |
 | `BANKSHIELD_AUDIT_KEY` | — | makes the audit chain an HMAC chain |
@@ -169,7 +193,7 @@ bankshield/
   api/           FastAPI app + static console (index.html, app.css, app.js)
 policies/        CSP, IAM, DRS, LOG, IR, REG-DIG
 eval/            questions.jsonl (98), holdout.jsonl (22), run_eval.py
-tests/           111 pytest tests
+tests/           115 pytest tests
 docs/            THREAT_MODEL.md
 infra/terraform/ GCP landing zone
 ```
